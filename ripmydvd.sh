@@ -15,23 +15,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# PREREQUISITES
-#	mplayer ffmpeg libdvdcss
-#
-# sudo dnf install mplayer ffmpeg
-# https://www.rpmfind.net/linux/rpm2html/search.php?query=libdvdcss
-# sudo dnf install libdvdcss-1.4.0-1.fc23.remi.x86_64.rpm
 
 #export DVDCSS_METHOD="key"
 #export DVDCSS_METHOD="title"
 export DVDCSS_VERBOSE="0"
 
-DRY_RUN=0
-
 #NOTE: if CSS decryption is not working correctly try umounting disc first then
 # eject disc and retry or try changing DVDCSS_METHOD variable
-
-preferredLang="en"
 
 #video bitrate calculation to acheive a filesize of 50MB per 10 minutes of video:
 #(50 MB * 8192 [converts MB to kilobits]) / 600 seconds = ~683 kilobits/s total bitrate
@@ -43,8 +33,11 @@ preferredLang="en"
 preferredVideoBitRate="973" #kbits/sec
 preferredAudioBitRate="192" #kbits/sec
 
+preferredLang="en"
+
 date=`date +%Y-%m-%d-%H-%M`
 LOG="./rip-$date.log"
+DRY_RUN=0
 DEVICE="/dev/sr0"
 if [ ! -e $DEVICE ] ; then
 	DEVICE="/dev/dvd"
