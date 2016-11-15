@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Copyright 2016 Steve Lovci
 #
@@ -23,16 +23,6 @@ export DVDCSS_VERBOSE="0"
 #NOTE: if CSS decryption is not working correctly try umounting disc first then
 # eject disc and retry or try changing DVDCSS_METHOD variable
 
-#video bitrate calculation to acheive a filesize of 50MB per 10 minutes of video:
-#(50 MB * 8192 [converts MB to kilobits]) / 600 seconds = ~683 kilobits/s total bitrate
-#683k - 128k (desired audio bitrate) = 555k video bitrate
-#
-#512MB/hour: 512*8192/3600 = 1165 total bitrate
-#1165 total bitrate - 192 audio bitrate = 973 video bitrate
-
-preferredVideoBitRate="973" #kbits/sec
-preferredAudioBitRate="192" #kbits/sec
-
 preferredLang="en"
 
 date=`date +%Y-%m-%d-%H-%M`
@@ -47,8 +37,6 @@ if [ ! -e $DEVICE ] ; then
 	echo "Could not find DVD device"
 	exit 1
 fi
-
-
 
 doPrint() {
 	newLine="1"
@@ -70,7 +58,7 @@ doPrint() {
 
 processTitle() {
 	start=`date +%s`
-	
+
 	title=$1
 	titleIdx=$2
 
@@ -95,18 +83,37 @@ processTitle() {
 	angle=""
 	if [ $angles -gt 1 ] ; then
 		angle="1"
+		if [ $DRY_RUN -eq 0 ] ; then
+			echo -n "    Angle $angle selected. Confirm? (Y/n): "
+			read tmp
+
+			if [ "$tmp" = "n" ] ; then
+				echo -n "    Which angle? "
+				read tmp
+				angleIsNum=`echo -n "$tmp" | grep '^[0-9]*$'`
+				if [ "$angleIsNum" != "" ] ; then
+					if [ $tmp -gt 0 -a $tmp -le $angles ] ; then
+						angle=$tmp
+					else
+						angle="1"
+					fi
+				else
+					angle="1"
+				fi
+			fi
+		fi
 		doPrint "    Using video angle $angle"
 	fi
 
-	#setup audio	
+	#setup audio
 	doPrint "  Audio Streams: $audioStreamCount"
 	audioId=""
 	audioLang=""
 	audioChannels="0"
-	
+
 	if [ $audioStreamCount -gt 0 ] ; then
 		#select the first audio stream by default
-		
+
 		audioStream=`echo $audioStreams | grep -o "audio_stream:[^ ]*" | head -1 | sed 's/audio_stream://g'`
 		audioId=`echo $audioStream | cut -d, -f 3`
 		audioLang=`echo $audioStream | cut -d, -f 2`
@@ -117,7 +124,7 @@ processTitle() {
 			audioChannels="2"
 		fi
 	fi
-	
+
 	if [ $audioStreamCount -gt 1 ] ; then
 		for audioStream in $audioStreams
 		do
@@ -139,7 +146,7 @@ processTitle() {
 
 			if [ "$audLang" != "" ] ; then
 				if [ $audLang = $preferredLang ] ; then
-					if [ $(echo "$audChannels > $audioChannels" | bc) -ne 0 ] ; then
+					if [ $(echo "$audChannels >= $audioChannels" | bc) -ne 0 ] ; then
 						audioId="$audId"
 						audioLang="$audLang"
 						audioChannels="$audChannels"
@@ -147,185 +154,173 @@ processTitle() {
 				fi
 			fi
 		done
-		
+
 		doPrint "    Using audio stream: id=$audioId, language=$audioLang, channels=$audioChannels"
 	fi
-	
+
 
 	#setup subtitle
 	doPrint "  Subtitles: $subtitleCount"
-	subtitleId=""
 	subtitleLang=""
 	if [ $subtitleCount -gt 0 ] ; then
-		if [ "$audioLang" = "$preferredLang" ] ; then
-			doPrint "    Skipping subtitle, audio is in preferred language"
-		else
-			#Use first subtitle by default
-			subtitleId=`echo $subtitles | grep -o "ID_SID_[^=]*=[^ ]*" | head -1 | sed 's/.*SID_\(.*\)_LANG.*/\1/g'`
-			subtitleLang=`echo $subtitles | grep -o "ID_SID_[^=]*=[^ ]*" | head -1 | sed 's/.*=//g'`
-				
-			if [ $subtitleCount -gt 1 ] ; then
-				for subtitle in $subtitles
-				do
-					#Find the subtitle that matches preferred language
-					subId=`echo $subtitle | sed 's/.*SID_\(.*\)_LANG.*/\1/g'`
-					subLang=`echo $subtitle | sed 's/.*=//g'`
+		#Use first subtitle by default
+		subtitleLang=`echo $subtitles | grep -o "ID_SID_[^=]*=[^ ]*" | head -1 | sed 's/.*=//g'`
 
-					doPrint "    Subtitle: id=$subId, language=$subLang"
-					if [ $subLang = $preferredLang ] ; then
-						subtitleId="$subId"
-						subtitleLang="$subLang"
-					fi
-				done
-			fi
-			
-			#HARD CODE A SUBTITLE STREAM HERE TO OVERRIDE AUTOSELECTION
-			#subtitleId="1"
-			#subtitleLang="en"
-			
-			if [ "$subtitleLang" != "$preferredLang" ] ; then
-				#Don't use subtitles if it is not in preferred language
-				subtitleId=""
-				subtitleLang=""
-				doPrint "    Skipping subtitle, no match in preferred language"
-			else
-				doPrint "    Using subtitle: id=$subtitleId, language=$subtitleLang"
-			fi
+		if [ $subtitleCount -gt 1 ] ; then
+			for subtitle in $subtitles
+			do
+				#Find the subtitle that matches preferred language
+				subLang=`echo $subtitle | sed 's/.*=//g'`
+
+				doPrint "    Subtitle: language=$subLang"
+				if [ $subLang = $preferredLang ] ; then
+					subtitleLang="$subLang"
+				fi
+			done
+		fi
+
+		#HARD CODE A SUBTITLE STREAM HERE IF YOU NEED TO OVERRIDE AUTOSELECTION
+		#subtitleLang="en"
+
+		if [ "$audioLang" = "$preferredLang" ] ; then
+			subtitleLang=""
+			doPrint "    Skipping subtitle, audio is in preferred language"
+		elif [ "$subtitleLang" != "$preferredLang" ] ; then
+			subtitleLang=""
+			doPrint "    Skipping subtitle, no match in preferred language"
+		else
+			doPrint "    Using subtitle: language=$subtitleLang"
 		fi
 	fi
-	
+
 	if [ $DRY_RUN -eq 1 ] ; then
 		#Don't actually copy or encode anything
 		return
 	fi
-	
+
 	titleName=$title
 	if [ $title -lt 10 ] ; then
 		titleName="0$title"
 	fi
 
-	videoFile="$outDir/$name""_title_$titleName.vid"
-	audioFile="$outDir/$name""_title_$titleName.aud"
-	subtitleFile="$outDir/$name""_title_$titleName"
+	subtitleBase="$outDir/$name""_title_$titleName""_orig"
+	copyFile="$outDir/$name""_title_$titleName""_orig.mpeg"
 	outFile="$outDir/$name""_title_$titleName.mp4"
 
-	mencVideoOpts=""
-	if [ "$angle" != "" ] ; then
-		mencVideoOpts="-dvdangle $angle"
-	fi
+	###
+	# Copy Title
+	###
 
-	mencOpts="-msglevel all=2 -dvd-device $DEVICE dvd://$title"
-	doPrint ""
-	doPrint "  Copying video..."
-	cmd="mplayer $mencOpts $mencVideoOpts -dumpvideo -dumpfile $videoFile"
-	echo "$cmd" >> $LOG
-	`$cmd >> $LOG 2>&1`
-	
-	videoBitRate="$preferredVideoBitRate"
-	videoFileSize="0"
-	if [ -e $videoFile ] ; then
-		videoFileSize=`ls -s $videoFile | cut -d" " -f1`
-	fi
-	
-	if [ $videoFileSize -gt 0 ] ; then
-		cmd="ffprobe -hide_banner $videoFile"
-		echo "$cmd" >> $LOG
-		vidBitRate=`$cmd |& grep Stream | sed 's/ *kb\/s.*//g' | sed 's/.* //g'`
-		if [ $vidBitRate -lt $preferredVideoBitRate ] ; then
-			videoBitRate="$vidBitRate"
-		fi
-		
-		doPrint "    Video bitrate: $vidBitRate kb/s"
-		if [ $videoBitRate -ne $vidBitRate ] ; then
-			doPrint "    Using video bitrate: $videoBitRate kb/s"
-		fi
-	else
-		doPrint "    No video stream found during copy"
-	fi
-
-	audioFileSize="0"
-	audioBitRate="$preferredAudioBitRate"
-	if [ "$audioId" != "" ] ; then
-		doPrint "  Copying audio..."
-		cmd="mplayer $mencOpts -aid $audioId -dumpaudio -dumpfile $audioFile"
-		echo "$cmd" >> $LOG
-		`$cmd >> $LOG 2>&1`
-		
-		
-		audioFileSize=`ls -s $audioFile | cut -d" " -f1`
-		if [ $audioFileSize -gt 0 ] ; then
-			cmd="ffprobe -hide_banner $audioFile"
-			echo "$cmd" >> $LOG
-			audBitRate=`$cmd |& grep Stream | sed 's/ *kb\/s.*//g' | sed 's/.* //g'`
-			if [ $audBitRate -lt $preferredAudioBitRate ] ; then
-				audioBitRate="$audBitRate"
-			fi
-			
-			doPrint "    Audio bitrate: $audBitRate kb/s"
-			if [ $audioBitRate -ne $audBitRate ] ; then
-				doPrint "    Using audio bitrate: $audioBitRate kb/s"
-			fi
-		else
-			doPrint "    No audio stream found during copy" 
-		fi
-	fi
-	
-	if [ $videoFileSize -eq 0 -a $audioFileSize -eq 0 ] ; then
+	writeCopyFile=1
+	if [ -e $copyFile ] ; then
 		doPrint ""
-		doPrint "  Skipping encoding, no video or audio streams" 
-		return
+		echo -n "Overwrite $copyFile? [Y/n]: ";
+		read tmp
+		if [ "$tmp" = "n" ] ; then
+			writeCopyFile=0
+		fi
 	fi
-	
-	ffmpegOpts="-y -hide_banner -loglevel warning"
-	if [ $videoFileSize -gt 0 ] ; then 
-		ffmpegOpts="$ffmpegOpts -i $videoFile"
-	fi
-	
-	if [ $audioFileSize -gt 0 ] ; then 
-		ffmpegOpts="$ffmpegOpts -i $audioFile"
-	fi
-	
-	if [ "$subtitleId" != "" ] ; then
-		doPrint "  Copying subtitles..."
-		cmd="mencoder $mencOpts -vobsubout $subtitleFile -vobsubid $subtitleId -nosound -ovc copy -o /dev/null"
+
+	if [ $writeCopyFile -eq 1 ] ; then
+		mencOpts="-msglevel all=2 -dvd-device $DEVICE dvd://$title"
+
+		if [ "$angle" != "" ] ; then
+			mencOpts="$mencOpts -dvdangle $angle"
+		fi
+
+		if [ "$subtitleId" != "" ] ; then
+			mencOpts="$mencOpts -sid $subtitleId"
+		fi
+
+		cmd="mplayer $mencOpts -dumpstream -dumpfile $copyFile"
 		echo "$cmd" >> $LOG
+		copyStart=`date +%s`
+		doPrint ""
+		doPrint "  Copying..."
 		`$cmd >> $LOG 2>&1`
-		
-		ffmpegOpts="$ffmpegOpts -i $subtitleFile.sub -i $subtitleFile.idx -filter_complex [0:v][2:s]overlay"
-	fi
-	
-	if [ $videoFileSize -gt 0 ] ; then 
-		ffmpegOpts="$ffmpegOpts -vcodec libx264 -preset medium -b:v $videoBitRate""k"
-	fi
-	
-	if [ $audioFileSize -gt 0 ] ; then 
-		ffmpegOpts="$ffmpegOpts -acodec aac -b:a $audioBitRate""k -strict experimental"
-	fi
-	
-	#estimated fileSize (MB) = duration * totalBitRate [abitrate kbps + vbitrate kbps ] / 8192 [convert kbits to mbytes]
-	fileSize=`echo "$duration * ($audioBitRate + $videoBitRate) / 8" | bc -l | sed 's/\(.*\...\).*/\1/g'`
-	fileSizeUnit="KB"
-	if [ $(echo "$fileSize > 1024" | bc) -ne 0 ] ; then
-		fileSize=`echo "$fileSize / 1024" | bc -l | sed 's/\(.*\...\).*/\1/g'`
-		fileSizeUnit="MB"
-	fi
-	
-	doPrint ""
-	doPrint "  Estimated file size: $fileSize $fileSizeUnit"
-	
-	doPrint ""
-	doPrint "  Encoding pass 1..."
-	cmd="ffmpeg $ffmpegOpts -pass 1 -f mp4 /dev/null"
-	echo "$cmd" >> $LOG
-	`$cmd >> $LOG 2>&1`
+		copyEnd=`date +%s`
 
-	doPrint "  Encoding pass 2..."
-	cmd="ffmpeg $ffmpegOpts -pass 2 $outFile"
-	echo "$cmd" >> $LOG
-	`$cmd >> $LOG 2>&1`
+		#if [ "$subtitleId" != "" ] ; then
+			#doPrint "  Copying subtitles..."
+			#cmd="mencoder $mencOpts -vobsubout $subtitleBase -vobsuboutid $subtitleLang -nosound -ovc copy -o /dev/null"
+			#echo "$cmd" >> $LOG
+			#`$cmd >> $LOG 2>&1`
+		#fi
 
+		copyDuration=`echo "$copyEnd - $copyStart" | bc -l`
+		doPrint "  Copy duration: $copyDuration seconds"
+	fi
+
+	###
+	# Encode Title
+	###
+
+	ffmpegOpts="-y -hide_banner -loglevel warning"
+
+	vcodec="libx264"
+	#vcodec="copy"
+	ffmpegOpts="$ffmpegOpts -deinterlace -map 0:v -vcodec $vcodec"
+
+	if [ "$vcodec" = "libx264" ] ; then
+		#compression="veryslow"
+		#compression="slower"
+		#compression="slow"
+		#compression="medium"
+		#compression="fast"
+		#compression="faster"
+		compression="veryfast"  #Testing shows "veryfast" is most efficient for time/compression ratio
+		#compression="superfast"
+		#compression="ultrafast"
+		quality="20" #18 is supposedly "visually lossless", but still large file size. 20 still has good quality and much more reasonable file size
+		ffmpegOpts="$ffmpegOpts -preset $compression -crf $quality"
+	fi
+
+	acodec="aac"
+	#acodec="copy"
+	ffmpegOpts="$ffmpegOpts -acodec $acodec"
+	if [ "$acodec" = "aac" ] ; then
+		ffmpegOpts="$ffmpegOpts -strict experimental"
+
+		#NOTE: AAC use maximum of 96 kbps per channel of audio output for good audio quality
+		maxAudioBitRate=`echo "96 * $audioChannels" | bc -l`
+
+		cmd="ffprobe -hide_banner $copyFile"
+		echo "$cmd" >> $LOG
+		audioBitRate=`$cmd |& grep "Stream.*Audio" | sed 's/ *kb\/s.*//g' | sed 's/.* //g'`
+		if [ $audioBitRate -gt $maxAudioBitRate ] ; then
+			audioBitRate=$maxAudioBitRate
+		fi
+		ffmpegOpts="$ffmpegOpts -b:a $audioBitRate""k"
+	fi
+
+	if [ "$audioId" != "" ] ; then
+		audioStreamIds=`ffprobe -hide_banner $copyFile |& grep Stream | grep Audio | sed 's/.*\[0x\(.*\)\].*/\1/g'`
+		audioStreamIdx=0
+		for audioStreamId in $audioStreamIds
+		do
+			audioStreamIdDec=`echo "ibase=16; $audioStreamId" | bc`
+
+			if [ "x$audioId" = "x$audioStreamIdDec" ] ; then
+				ffmpegOpts="$ffmpegOpts -map 0:a:$audioStreamIdx"
+				break
+			fi
+			audioStreamIdx=`echo "$audioStreamIdx + 1" | bc -l`
+		done
+	fi
+
+	doPrint ""
+	doPrint "  Encoding..."
+
+	cmd="ffmpeg -i $copyFile $ffmpegOpts $outFile"
+	echo "$cmd" >> $LOG
+	encStart=`date +%s`
+	`$cmd >> $LOG 2>&1`
 	end=`date +%s`
+
+	encodingDuration=`echo "$end - $encStart" | bc -l`
 	processDuration=`echo "$end - $start" | bc -l`
+
+	doPrint "  Encoding duration: $encodingDuration seconds"
 	doPrint ""
 	doPrint "  Processing duration: $processDuration seconds"
 }
@@ -337,7 +332,7 @@ cmd="mencoder -dvd-device $DEVICE dvd://99 -msgmodule -msglevel all=2:identify=6
 echo "$cmd" >> $LOG
 out=`$cmd |& grep IDENTIFY`
 echo "$out" >> $LOG
-	
+
 id=`echo $out | grep -o "DISC_ID=[^ ]*" | sed 's/.*DISC_ID=//g'`
 name=`echo $out | sed 's/.*VOLUME_ID=//g'`
 titleCount=`echo $out | sed 's/.*TITLES=//g' | sed 's/ .*//g'`
