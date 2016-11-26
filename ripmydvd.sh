@@ -281,12 +281,13 @@ processTitle() {
 	if [ "$acodec" = "aac" ] ; then
 		ffmpegOpts="$ffmpegOpts -strict experimental"
 
+		actualAudioChannels=`echo $audioChannels | sed 's/\./+/g' | bc -l`
 		#NOTE: AAC use maximum of 96 kbps per channel of audio output for good audio quality
-		maxAudioBitRate=`echo "96 * $audioChannels" | bc -l`
+		maxAudioBitRate=`echo "96 * $actualAudioChannels" | bc -l`
 
 		cmd="ffprobe -hide_banner $copyFile"
 		echo "$cmd" >> $LOG
-		audioBitRate=`$cmd |& grep "Stream.*Audio" | sed 's/ *kb\/s.*//g' | sed 's/.* //g'`
+		audioBitRate=`$cmd |& grep "Stream.*Audio" | sed 's/ *kb\/s.*//g' | sed 's/.* //g' | grep -v '^[^0-9]*$'`
 		if [ $audioBitRate -gt $maxAudioBitRate ] ; then
 			audioBitRate=$maxAudioBitRate
 		fi
