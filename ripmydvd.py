@@ -6,7 +6,7 @@ import subprocess
 import re
 import time
 
-LOG_FILE = None
+LOG_FILE = "rip.log"
 DEBUG = False
 
 ##### BEGIN RIPPER CLASS #####
@@ -429,7 +429,7 @@ class Ripper:
 						break
 		elif "audio_streams" in title and len(title["audio_streams"]) > 0:
 			#audio streams exist, but no preferred lang. just use the first audio stream
-			settings["audio_stream_idx"] = 0
+			settings["audio_stream_idx"] = None
 					
 		return settings;
 
@@ -502,7 +502,14 @@ class Ripper:
 					if "Audio: %s" % (audioStream["format"]) in line:
 						streamIdx = re.sub(r'.*Stream #([^\[]*).*',r'\1',line)
 						streamId = int(re.sub(r'.*\[0x(.*)\]:.*',r'\1',line),16)
-						streamChannels = float(re.sub(r'.*Hz, ([^\(, ]+).*',r'\1',line))
+						
+						streamChannels = re.sub(r'.*Hz, ([^\(, ]+).*',r'\1',line)
+						if streamChannels == "mono":
+							streamChannels = 1
+						if streamChannels == "stereo":
+							streamChannels = 2
+						streamChannels = float(streamChannels)
+						
 						streamBitRate = int(re.sub(r'.* ([^ ]+) kb/s',r'\1',line))
 						
 						debug("streamIdx=%s, streamId=%s, streamChannels=%s, streamBitRate=%s" % (streamIdx,streamId,streamChannels,streamBitRate))
@@ -547,6 +554,12 @@ class Ripper:
 		if title["settings"]["subtitle_idx"] != None:
 			subtitleIdx = title["settings"]["subtitle_idx"]
 			subtitle = title["subtitles"][subtitleIdx]
+
+			if os.path.isfile("%s.idx" % (baseFile)):
+				os.remove("%s.idx" % (baseFile))
+				
+			if os.path.isfile("%s.sub" % (baseFile)):
+				os.remove("%s.sub" % (baseFile))
 			
 			subCopyCmd = list(mplayerCmd)
 			subCopyCmd[0] = "/usr/bin/mencoder"
