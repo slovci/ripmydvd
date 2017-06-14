@@ -441,6 +441,9 @@ class Ripper:
 	def _processTitle(self,title):
 		volumeName = self.discInfo["volume_id"]
 		titleNumber = title["number"]
+		if titleNumber < 10:
+			titleNumber = "0%s" % (titleNumber)
+
 		baseFile = "%s_title_%s" % (volumeName,titleNumber)
 		copyFile = "%s.mpeg" % (baseFile)
 		outFile  = "%s.mp4" % (baseFile)
